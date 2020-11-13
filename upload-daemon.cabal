@@ -1,0 +1,37 @@
+-- SPDX-FileCopyrightText: 2020 Serokell <https://serokell.io/>
+--
+-- SPDX-License-Identifier: MPL-2.0
+
+cabal-version:       >=2.0
+
+name:                upload-daemon
+version:             0.1.0.0
+synopsis:            Upload daemon for nix post-build-hook
+-- description:
+-- bug-reports:
+license:             MPL-2.0
+license-file:        LICENSE
+author:              Alexander Bantyev
+maintainer:          balsoft@balsoft.ru
+-- copyright:
+-- category:
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+
+executable upload-daemon
+  main-is:             Main.hs
+  -- other-modules:
+  -- other-extensions:
+  build-depends:       base
+                     , prometheus ^>= 2.2
+                     , conduit
+                     , conduit-extra
+                     , async
+                     , text
+                     , bytestring
+                     , process
+                     , optparse-applicative
+                     , streaming-commons
+  -- hs-source-dirs:
+  default-language:    Haskell2010
+  ghc-options:         -threaded
