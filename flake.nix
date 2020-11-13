@@ -21,6 +21,6 @@
       program = "${pkg}/bin/upload-daemon";
     }) self.defaultPackage;
 
-    nixosModules.upload-daemon = import ./service.nix;
+    nixosModules.upload-daemon = import ./service.nix self;
   };
 }

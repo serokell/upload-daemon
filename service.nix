@@ -2,11 +2,17 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
+self:
+
 { pkgs, lib, config, ... }:
 with lib;
 let
   cfg = config.services.upload-daemon;
   description = "a daemon that asynchronously copies paths to a remote store";
+  upload-paths = pkgs.writeShellScript "upload-paths" ''
+    nix sign-paths -r -k ${cfg.post-build-hook.secretKey} $OUT_PATHS
+    ${pkgs.netcat}/bin/nc -U ${cfg.socket} -N <<< $OUT_PATHS || echo "Uploading failed"
+  '';
 in
 {
   options.services.upload-daemon = with types; {
@@ -33,7 +39,14 @@ in
     package = mkOption {
       description = "Package containing upload-daemon";
       type = package;
-      default = pkgs.scratch-upload-daemon;
+      default = self.defaultPackage.${pkgs.stdenv.system};
+    };
+    post-build-hook = {
+      enable = mkEnableOption "post-build-hook that uploads the built path to a remote store";
+      secretKey = mkOption {
+        type = path;
+        description = "Path to the key with which to sign the paths";
+      };
     };
   };
   config = mkIf cfg.enable {
@@ -51,5 +64,6 @@ in
         +RTS -N$(nproc)'';
         serviceConfig.Restart = "always";
     };
+    nix.extraOptions = lib.optionalString cfg.post-build-hook.enable "post-build-hook = ${upload-paths}";
   };
 }
