@@ -24,6 +24,7 @@ import Options.Applicative
   (Parser, auto, execParser, fullDesc, header, help, helper, info, long, metavar, option, optional,
   progDesc, short, showDefault, strOption, value, (<**>))
 import System.Exit (ExitCode(ExitSuccess))
+import System.IO (hPutStr, hPutStrLn, stderr)
 import System.Metrics.Prometheus.Concurrent.RegistryT (registerCounter, registerGauge, runRegistryT)
 import System.Metrics.Prometheus.Http.Scrape (serveMetricsT)
 import System.Metrics.Prometheus.Metric.Counter as C (Counter, inc)
@@ -90,13 +91,13 @@ upload :: UploadTarget -> StatisticsHandlers -> ByteString -> IO ()
 upload target StatisticsHandlers {..} path = do
   G.dec queued
   G.inc running
-  (code, _, stderr) <- readProcessWithExitCode "nix"
+  (code, _, stderrOutput) <- readProcessWithExitCode "nix"
     [ "copy", "--to", target, unpack $ decodeUtf8 path ]
     ""
   G.dec running
   if code /= ExitSuccess
-    then G.inc failure >> putStrLn stderr
-    else G.inc success >> putStr "Uploaded " >> BS.putStrLn path
+    then G.inc failure >> hPutStrLn stderr stderrOutput
+    else G.inc success >> hPutStr stderr "Uploaded " >> BS.hPutStrLn stderr path
 
 
 uploadWorker :: UploadTarget -> StatisticsHandlers -> Chan ByteString -> IO ()
@@ -107,7 +108,7 @@ response :: [ByteString] -> BS.ByteString
 response paths = BS.pack $ "Queued " <> show (length paths) <> " paths"
 
 logUploading :: ConduitT BS.ByteString Void IO ()
-logUploading = CL.mapM_ $ \paths -> BS.putStrLn $ "Queued " <> paths
+logUploading = CL.mapM_ $ \paths -> BS.hPutStrLn stderr $ "Queued " <> paths
 
 queueUpload :: Chan ByteString -> StatisticsHandlers -> ConduitT BS.ByteString BS.ByteString IO ()
 queueUpload uploadCh StatisticsHandlers {..} =
@@ -128,7 +129,7 @@ main = do
 
   when ((port, unix) == (Nothing, Nothing)) $ error "Specify either --port or --unix to start the server"
 
-  putStrLn $ "Starting server on "
+  hPutStrLn stderr $ "Starting server on "
     <> maybe "" (\p -> "localhost:" <> show p <> " ") port
     <> maybe "" (show <> const " ") unix
     <> "uploading to " <> uploadTarget
