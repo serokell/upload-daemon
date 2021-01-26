@@ -55,13 +55,15 @@ in
       wantedBy = [ "multi-user.target" ];
       path = with pkgs; [ nix ];
       script =
-        ''${cfg.package}/bin/upload-daemon \
-        ${lib.mapConcatStringSep " \\\n" (target: "--target '${target}'") cfg.targets} \
-        ${lib.optionalString (! isNull cfg.port) "--port ${toString cfg.port}"} \
-        ${lib.optionalString (! isNull cfg.socket) "--unix \"${toString cfg.socket}\""} \
-        ${lib.optionalString (! isNull cfg.prometheusPort) "--stat-port ${toString cfg.prometheusPort}"} \
-        -j $(nproc) \
-        +RTS -N$(nproc)'';
+        ''
+          ${cfg.package}/bin/upload-daemon \
+          ${lib.concatMapStringsSep " \\\n" (target: "--target '${target}'") cfg.targets} \
+          ${lib.optionalString (! isNull cfg.port) "--port ${toString cfg.port}"} \
+          ${lib.optionalString (! isNull cfg.socket) "--unix \"${toString cfg.socket}\""} \
+          ${lib.optionalString (! isNull cfg.prometheusPort) "--stat-port ${toString cfg.prometheusPort}"} \
+          -j $(nproc) \
+          +RTS -N$(nproc)
+      '';
         serviceConfig.Restart = "always";
     };
     nix.extraOptions = lib.optionalString cfg.post-build-hook.enable "post-build-hook = ${upload-paths}";
