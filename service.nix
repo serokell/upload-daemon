@@ -29,7 +29,7 @@ in
     socket = mkOption {
       description = "UNIX socket to listen on";
       type = nullOr path;
-      default = "/run/upload-daemon.sock";
+      default = "/run/upload-daemon/upload.sock";
     };
     prometheusPort = mkOption {
       description = "Port that prometheus endpoint listens on";
@@ -64,7 +64,10 @@ in
           -j $(nproc) \
           +RTS -N$(nproc)
       '';
-        serviceConfig.Restart = "always";
+        serviceConfig = {
+          Restart = "always";
+          RuntimeDirectory = "upload-daemon";
+        };
     };
     nix.extraOptions = lib.optionalString cfg.post-build-hook.enable "post-build-hook = ${upload-paths}";
   };

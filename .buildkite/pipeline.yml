@@ -2,4 +2,7 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-result*
+steps:
+  - label: Run checks
+    commands:
+      - nix-build -A checks.x86_64-linux

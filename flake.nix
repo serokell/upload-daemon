@@ -6,25 +6,35 @@
   description = "";
 
   inputs.nixpkgs.url = "github:serokell/nixpkgs";
+  inputs.flake-utils.url = "github:numtide/flake-utils";
 
-  outputs = { self, nixpkgs }: {
-    packages = builtins.mapAttrs (system: pkgs: {
-      upload-daemon =
-        pkgs.haskellPackages.callCabal2nix "upload-daemon" ./. { };
-    }) nixpkgs.legacyPackages;
+  outputs = { self, nixpkgs, flake-utils }:
+    flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system: {
+      packages = {
+        upload-daemon =
+          nixpkgs.legacyPackages.${system}.haskellPackages.callCabal2nix
+          "upload-daemon" ./. { };
+      };
 
-    defaultPackage =
-      builtins.mapAttrs (_: packages: packages.upload-daemon) self.packages;
+      defaultPackage = self.packages.${system}.upload-daemon;
 
-    defaultApp = builtins.mapAttrs (_: pkg: {
-      type = "app";
-      program = "${pkg}/bin/upload-daemon";
-    }) self.defaultPackage;
+      defaultApp = {
+        type = "app";
+        program = "${self.defaultPackage.${system}}/bin/upload-daemon";
+      };
 
-    nixosModules.upload-daemon = import ./service.nix self;
+      checks = {
+        build = self.defaultPackage.${system};
+      } // (import ./test {
+        inherit self system;
+        pkgs = nixpkgs.legacyPackages.${system};
+        nixosPath = "${nixpkgs}/nixos";
+      });
 
-    devShell = builtins.mapAttrs (arch: pkgs:
-      pkgs.mkShell { inputsFrom = [ self.packages.${arch}.upload-daemon.env ]; })
-      nixpkgs.legacyPackages;
-  };
+      devShell = nixpkgs.legacyPackages.${system}.mkShell {
+        inputsFrom = [ self.packages.${system}.upload-daemon.env ];
+      };
+    }) // {
+      nixosModules.upload-daemon = import ./service.nix self;
+    };
 }
