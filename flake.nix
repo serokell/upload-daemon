@@ -22,5 +22,9 @@
     }) self.defaultPackage;
 
     nixosModules.upload-daemon = import ./service.nix self;
+
+    devShell = builtins.mapAttrs (arch: pkgs:
+      pkgs.mkShell { inputsFrom = [ self.packages.${arch}.upload-daemon.env ]; })
+      nixpkgs.legacyPackages;
   };
 }
