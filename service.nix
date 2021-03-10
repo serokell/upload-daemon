@@ -48,6 +48,12 @@ in
         description = "Path to the key with which to sign the paths";
       };
     };
+    workers = mkOption {
+      description = "Number of nix-copies to run at the same time, null means use the number of CPUs";
+      type = nullOr int;
+      default = null;
+      example = 4;
+    };
   };
   config = mkIf cfg.enable {
     systemd.services.upload-daemon = {
@@ -56,13 +62,15 @@ in
       path = with pkgs; [ nix ];
       script =
         ''
+          workers=${if cfg.workers == null then "$(nproc)" else toString cfg.workers}
+
           ${cfg.package}/bin/upload-daemon \
           ${lib.concatMapStringsSep " \\\n" (target: "--target '${target}'") cfg.targets} \
           ${lib.optionalString (! isNull cfg.port) "--port ${toString cfg.port}"} \
           ${lib.optionalString (! isNull cfg.socket) "--unix \"${toString cfg.socket}\""} \
           ${lib.optionalString (! isNull cfg.prometheusPort) "--stat-port ${toString cfg.prometheusPort}"} \
-          -j $(nproc) \
-          +RTS -N$(nproc)
+          -j "$workers" \
+          +RTS -N"$workers"
       '';
         serviceConfig = {
           Restart = "always";
