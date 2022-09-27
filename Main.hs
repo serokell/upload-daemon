@@ -23,7 +23,7 @@ import Data.Text (unpack)
 import Data.Text.Encoding (decodeUtf8)
 import Options.Applicative
   (Parser, auto, execParser, fullDesc, header, help, helper, info, long, metavar, option, optional,
-  progDesc, short, showDefault, strOption, value, (<**>))
+  progDesc, short, showDefault, strOption, value, (<**>), switch)
 import System.Exit (ExitCode(ExitSuccess))
 import System.IO (hPutStr, hPutStrLn, stderr)
 import System.Metrics.Prometheus.Concurrent.RegistryT (registerCounter, registerGauge, runRegistryT)
@@ -50,6 +50,13 @@ data UploadOptions = UploadOptions
   , prometheusPort :: Int
   , uploadTargets :: [UploadTarget]
   , nrWorkers :: Int
+  , uploadDerivations :: Bool
+  }
+
+data UploadJob = UploadJob
+  { uploadDerivation :: Bool
+  , path :: ByteString
+  , target :: UploadTarget
   }
 
 uploadOptions :: Parser UploadOptions
@@ -85,15 +92,20 @@ uploadOptions = UploadOptions
     <> value 2
     <> showDefault
     <> help "Number of nix-copies to run at the same time" )
+  <*> switch
+  ( long "upload-derivations"
+    <> short 'd'
+    <> help "Whether to upload derivations of the built packages" )
+
 
 
 -- | Upload a path to target binary cache
-upload :: StatisticsHandlers -> ByteString -> UploadTarget ->  IO ()
-upload StatisticsHandlers {..} path target = do
+upload :: StatisticsHandlers -> UploadJob -> IO ()
+upload StatisticsHandlers {..} UploadJob {..} = do
   G.dec queued
   G.inc running
   (code, _, stderrOutput) <- readProcessWithExitCode "nix"
-    [ "copy", "--to", target, unpack $ decodeUtf8 path ]
+    ([ "copy", "--to", target, unpack $ decodeUtf8 path ] ++ ["--derivation" | uploadDerivation])
     ""
   G.dec running
   if code /= ExitSuccess
@@ -109,9 +121,10 @@ upload StatisticsHandlers {..} path target = do
       hPutStrLn stderr $ " to "<>target
       G.inc success
 
-uploadWorker :: StatisticsHandlers -> Chan (ByteString, UploadTarget) -> IO ()
+
+uploadWorker :: StatisticsHandlers -> Chan UploadJob -> IO ()
 uploadWorker shand uploadCh = forever $
-  readChan uploadCh >>= uncurry (upload shand)
+  readChan uploadCh >>= upload shand
 
 response :: [ByteString] -> BS.ByteString
 response paths = BS.pack $ "Queued " <> show (length paths) <> " paths"
@@ -119,14 +132,18 @@ response paths = BS.pack $ "Queued " <> show (length paths) <> " paths"
 logUploading :: ConduitT BS.ByteString Void IO ()
 logUploading = CL.mapM_ $ \paths -> BS.hPutStrLn stderr $ "Queued " <> paths
 
-queueUpload :: [UploadTarget] -> Chan (ByteString, UploadTarget) -> StatisticsHandlers -> ConduitT BS.ByteString BS.ByteString IO ()
-queueUpload targets uploadCh StatisticsHandlers {..} =
+uploadConduit :: [UploadTarget] -> Bool -> Chan UploadJob -> StatisticsHandlers -> ConduitT BS.ByteString BS.ByteString IO ()
+uploadConduit targets uploadDerivations uploadCh StatisticsHandlers {..} =
     passthroughSink logUploading return
     .| passthroughSink (CL.mapM_ $ const $ C.inc requests) return
     .| CL.map BS.words
     .| passthroughSink (CL.mapM_ . mapM_ $ const $ G.add (fromIntegral $ length targets) queued) return
-    .| passthroughSink (CL.mapM_ . mapM_ $ forM_ targets . curry (writeChan uploadCh)) return
+    .| passthroughSink (CL.mapM_ . mapM_ $ spool) return
     .| CL.map response
+  where
+    spool = \path -> forM_ targets
+          $ \target -> forM_ (enumFromTo False uploadDerivations)
+          $ \uploadDerivation -> writeChan uploadCh $ UploadJob uploadDerivation path target
 
 handleConnection :: (HasReadWrite ad) => ConduitT BS.ByteString BS.ByteString IO () -> ad -> IO ()
 handleConnection conduit appData = runConduit $ appSource appData .| conduit .| appSink appData
@@ -150,7 +167,7 @@ main = do
       <*> registerGauge "uploads" (addLabel "upload" "failure" mempty)
       <*> registerGauge "uploads" (addLabel "upload" "running" mempty)
       <*> registerGauge "uploads" (addLabel "upload" "queued" mempty)
-    let conduit = queueUpload uploadTargets uploadCh shand
+    let conduit = uploadConduit uploadTargets uploadDerivations uploadCh shand
 
     void $ liftIO $ async $ runConcurrently
       $ Concurrently (forM_ port $ \p -> runTCPServer (TCP.serverSettings p "*") $ handleConnection conduit)
@@ -162,4 +179,4 @@ main = do
     opts = info (uploadOptions <**> helper)
       ( fullDesc
      <> progDesc "Listen on PORT and/or UNIX for paths to be uploaded to TARGET"
-     <> header "nix-upload-daemon - keep a queue of uploading paths to a remote store" )
+     <> header "upload-daemon - keep a queue of uploading paths to a remote store" )

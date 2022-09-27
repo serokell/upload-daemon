@@ -31,8 +31,9 @@
         nixosPath = "${nixpkgs}/nixos";
       });
 
-      devShell = nixpkgs.legacyPackages.${system}.mkShell {
+      devShell = with nixpkgs.legacyPackages.${system}; mkShell {
         inputsFrom = [ self.packages.${system}.upload-daemon.env ];
+        buildInputs = [ haskell-language-server ];
       };
     }) // {
       nixosModules.upload-daemon = import ./service.nix self;

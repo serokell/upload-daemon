@@ -54,6 +54,7 @@ in
       default = null;
       example = 4;
     };
+    upload-derivations = mkEnableOption "uploading derivations for the built paths";
   };
   config = mkIf cfg.enable {
     systemd.services.upload-daemon = {
@@ -69,6 +70,7 @@ in
           ${lib.optionalString (! isNull cfg.port) "--port ${toString cfg.port}"} \
           ${lib.optionalString (! isNull cfg.socket) "--unix \"${toString cfg.socket}\""} \
           ${lib.optionalString (! isNull cfg.prometheusPort) "--stat-port ${toString cfg.prometheusPort}"} \
+          ${lib.optionalString cfg.upload-derivations "--upload-derivations"} \
           -j "$workers" \
           +RTS -N"$workers"
       '';
