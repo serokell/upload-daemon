@@ -15,6 +15,7 @@
       environment.systemPackages = [ pkgs.stdenv ];
 
       nix.binaryCachePublicKeys = [ (builtins.readFile ./cache-pub-key.pem) ];
+      nix.settings.experimental-features = [ "nix-command" "flakes" ];
 
       services.upload-daemon = {
         enable = true;
@@ -37,7 +38,7 @@
     runner.succeed(
         "nix-build --no-substitute ${./test-build.nix}"
     )
-    runner.succeed("sleep 1")
+    runner.succeed("sleep 3")
     runner.succeed(
         "cat /tmp/test1${pkgs.callPackage ./test-build.nix {}} | grep hello"
     )
