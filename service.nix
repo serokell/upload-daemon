@@ -10,7 +10,7 @@ let
   cfg = config.services.upload-daemon;
   description = "a daemon that asynchronously copies paths to a remote store";
   upload-paths = pkgs.writeShellScript "upload-paths" ''
-    nix sign-paths -r -k ${cfg.post-build-hook.secretKey} $OUT_PATHS
+    nix store sign -r -k ${cfg.post-build-hook.secretKey} $OUT_PATHS
     ${pkgs.netcat}/bin/nc -U ${cfg.socket} -N <<< $OUT_PATHS || echo "Uploading failed"
   '';
 in
