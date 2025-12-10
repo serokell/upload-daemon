@@ -23,7 +23,7 @@ executable upload-daemon
   -- other-modules:
   -- other-extensions:
   build-depends:       base
-                     , prometheus ^>= 2.2
+                     , prometheus >= 2.2 && < 2.4
                      , conduit
                      , conduit-extra
                      , async
